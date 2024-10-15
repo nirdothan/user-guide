@@ -22,7 +22,7 @@ Reference](https://kubevirt.io/api-reference/master/definitions.html#_v1_network
 
 ## Networks
 
-Network backends are configured in `spec.networks`. A network must have
+Networks are configured in `spec.networks`. A network must have
 a unique name. Additional fields declare which logical or physical
 device the network relates to.
 
@@ -47,14 +47,15 @@ fields:
 </tr>
 <tr class="even">
 <td><p><code>multus</code></p></td>
-<td><p>Secondary network provided using Multus</p></td>
+<td><p>Secondary network provided using Multus<br>
+or Primary network when multus is defined as default</p></td>
 </tr>
 </tbody>
 </table>
 
 ### pod
 
-A `pod` network represents the default pod `eth0` interface configured
+A `pod` network represents the default pod (typically `eth0`) interface configured
 by cluster network solution that is present in each pod.
 
 ```yaml
@@ -77,10 +78,10 @@ It is also possible to connect VMIs to secondary networks using
 is installed across your cluster and a corresponding
 `NetworkAttachmentDefinition` CRD was created.
 
-The following example defines a network which uses the [bridge CNI
+The following example defines a secondary network which uses the [bridge CNI
 plugin](https://www.cni.dev/plugins/current/main/bridge/), which will connect the VMI
-to Linux bridge `br1`. Other CNI plugins such as
-ptp, ovs-cni, or Flannel might be used as well. For their
+to Linux bridge `br10`. Other CNI plugins such as
+ptp, ovn-cni, or sriov-cni might be used as well. For their
 installation and usage refer to the respective project documentation.
 
 First the `NetworkAttachmentDefinition` needs to be created. That is
@@ -91,19 +92,30 @@ definition.
 apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
-  name: bridge-test
+  name: linux-bridge-net-ipam
 spec:
   config: '{
       "cniVersion": "0.3.1",
-      "name": "bridge-test",
-      "type": "bridge",
-      "bridge": "br1",
-      "disableContainerInterface": true
+      "name": "mynet",
+      "plugins": [
+        {
+          "type": "bridge",
+          "bridge": "br10",
+          "vlan": 0,
+          "ipam": {
+            "type": "host-local",
+            "subnet": "10.1.1.0/24"
+          },
+          "macspoofchk": false,
+          "mtu": 1400
+        }
+      ]
     }'
 ```
 
 With following definition, the VMI will be connected to the default pod
-network and to the secondary Open vSwitch network.
+network and to the secondary bridge network, referencing the `NetworkAttachmentDefinition` 
+shown above(in the same namespace)
 
 ```yaml
 kind: VM
@@ -111,41 +123,26 @@ spec:
   domain:
     devices:
       interfaces:
-        - name: default
-          masquerade: {}
-          bootOrder: 1   # attempt to boot from an external tftp server
-          dhcpOptions:
-            bootFileName: default_image.bin
-            tftpServerName: tftp.example.com
-        - name: ovs-net
-          bridge: {}
-          bootOrder: 2   # if first attempt failed, try to PXE-boot from this L2 networks
+      - masquerade: {}
+        name: default
+      - bridge: {}
+        name: linux-bridge-with-ipam
   networks:
   - name: default
     pod: {} # Stock pod network
-  - name: ovs-net
+  - name: linux-bridge-with-ipam
     multus: # Secondary multus network
-      networkName: ovs-vlan-100
+      networkName: linux-bridge-net-ipam #ref to NAD name
 ```
-
+#### Multus as primary network provider
 It is also possible to define a multus network as the default pod
-network with [Multus](https://github.com/intel/multus-cni). A version of
-multus after this [Pull
-Request](https://github.com/intel/multus-cni/pull/174) is required
-(currently master).
+network by indicating `spec.networks.multus.default=true`. The multus delegate chosen as default **must** return at least one
+IP address.
+See [Multus](https://github.com/intel/multus-cni) documentation for further information<br> 
+⚠️ Note that a multus `default` network and a `pod` network type are mutually
+exclusive.
 
-**Note the following:**
-
--   A multus default network and a pod network type are mutually
-    exclusive.
-
--   The virt-launcher pod that starts the VMI will **not** have the pod
-    network configured.
-
--   The multus delegate chosen as default **must** return at least one
-    IP address.
-
-Create a `NetworkAttachmentDefinition` with IPAM.
+Example: a `NetworkAttachmentDefinition` with IPAM.
 
 ```yaml
 apiVersion: "k8s.cni.cncf.io/v1"
@@ -182,6 +179,7 @@ spec:
       default: true
       networkName: bridge-test
 ```
+
 
 
 ## Interfaces
