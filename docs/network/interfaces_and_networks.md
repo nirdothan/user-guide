@@ -186,12 +186,12 @@ spec:
 
 Network interfaces are configured in `spec.domain.devices.interfaces`.
 They describe properties of virtual interfaces as "seen" inside guest
-instances. The same network backend may be connected to a virtual
+instances. The same `network` may be connected to a virtual
 machine in multiple different ways, each with their own connectivity
 guarantees and characteristics.
 
-Each interface should declare its type by defining on of the following
-fields:
+The mandatory interface configuration includes a `name`, 
+which references a network name and either a type from the table below, or a [network binding plugin](https://kubevirt.io/user-guide/network/network_binding_plugins/) reference.
 
 <table>
 <colgroup>
@@ -210,16 +210,12 @@ fields:
 <td><p>Connect using a linux bridge</p></td>
 </tr>
 <tr class="even">
-<td><p><code>slirp</code></p></td>
-<td><p>Connect using QEMU user networking mode</p></td>
-</tr>
-<tr class="odd">
 <td><p><code>sriov</code></p></td>
 <td><p>Pass through a SR-IOV PCI device via <code>vfio</code></p></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><p><code>masquerade</code></p></td>
-<td><p>Connect using Iptables rules to nat the traffic</p></td>
+<td><p>Connect using nftables rules to nat the traffic<br>both egress and ingress</p></td>
 </tr>
 </tbody>
 </table>
@@ -259,7 +255,7 @@ properties "seen" inside guest instances, as listed below:
 <td><p>ports</p></td>
 <td></td>
 <td><p>empty</p></td>
-<td><p>List of ports to be forwarded to the virtual machine.</p></td>
+<td><p>Allow-list of ports to be forwarded to the virtual machine.</p></td>
 </tr>
 <tr class="even">
 <td><p>pciAddress</p></td>
@@ -281,7 +277,7 @@ spec:
           masquerade: {} # connect through a masquerade
           ports:
            - name: http
-             port: 80
+             port: 80 # allow only http traffic ingress
   networks:
   - name: default
     pod: {}
@@ -289,7 +285,7 @@ spec:
 
 > **Note:** For secondary interfaces, when a MAC address is specified for a
 > virtual machine interface, it is passed to the underlying CNI plugin which is,
-> in turn, expected to configure the backend to allow for this particular MAC.
+> in turn, expected to configure the network provider to allow for this particular MAC.
 > Not every plugin has native support for custom MAC addresses.
 
 > **Note:** For some CNI plugins without native support for custom MAC
@@ -333,10 +329,7 @@ spec:
 >
 ### Ports
 
-Declare ports listen by the virtual machine
-
-> **Note:** When using the slirp interface only the configured ports
-> will be forwarded to the virtual machine.
+Allow-list of ports that are forwarded to the VM, if empty all ports are allowed
 
 <table>
 <colgroup>
